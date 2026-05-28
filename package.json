@@ -1,0 +1,11 @@
+{
+  "name": "mote-no",
+  "version": "1.0.0",
+  "description": "Norsk møteassistent — lokal, enkeltstående HTML-app med Groq Whisper + Llama.",
+  "scripts": {
+    "test": "node scripts/validate.js",
+    "validate": "node scripts/validate.js"
+  },
+  "license": "MIT",
+  "private": true
+}

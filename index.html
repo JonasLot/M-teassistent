@@ -1,0 +1,1162 @@
+<!DOCTYPE html>
+<html lang="no">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>møte.no</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;1,9..144,300&family=DM+Mono:wght@300;400&display=swap');
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #0e0f0d; --surface: #161714; --surface2: #1e1f1c;
+    --border: #2a2b27; --accent: #c8f060; --accent-dim: #8aaa2a;
+    --text: #e8e6df; --text-muted: #7a7870; --danger: #e05a5a; --radius: 12px;
+  }
+  body { background: var(--bg); color: var(--text); font-family: 'DM Mono', monospace; font-weight: 300; min-height: 100vh; }
+  .app { max-width: 900px; margin: 0 auto; padding: 32px 24px 80px; display: flex; flex-direction: column; }
+
+  header { display: flex; align-items: baseline; justify-content: space-between; padding-bottom: 28px; border-bottom: 1px solid var(--border); margin-bottom: 28px; }
+  .logo { font-family: 'Fraunces', serif; font-size: 22px; font-weight: 300; letter-spacing: -0.02em; }
+  .logo span { color: var(--accent); }
+  .header-meta { font-size: 11px; color: var(--text-muted); letter-spacing: 0.08em; text-transform: uppercase; }
+
+  .config-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 20px; }
+  @media (max-width: 600px) { .config-grid { grid-template-columns: 1fr; } }
+  .config-row { display: flex; align-items: center; gap: 12px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 16px; transition: border-color 0.2s; }
+  .config-row.valid { border-color: var(--accent-dim); }
+  .api-label { font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-muted); white-space: nowrap; flex-shrink: 0; }
+  .api-input { flex: 1; background: transparent; border: none; outline: none; color: var(--text); font-family: 'DM Mono', monospace; font-size: 12px; font-weight: 300; min-width: 0; }
+  .api-input::placeholder { color: var(--text-muted); }
+  .api-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--border); flex-shrink: 0; transition: background 0.2s; }
+  .api-dot.ok { background: var(--accent); }
+
+  .folder-row { display: flex; align-items: center; gap: 14px; margin-bottom: 28px; }
+  .folder-btn { display: flex; align-items: center; gap: 8px; background: var(--surface); border: 1px solid var(--border); color: var(--text-muted); border-radius: 8px; padding: 10px 16px; font-family: 'DM Mono', monospace; font-size: 12px; cursor: pointer; transition: all 0.15s; white-space: nowrap; }
+  .folder-btn:hover { border-color: var(--text-muted); color: var(--text); }
+  .folder-info { display: flex; flex-direction: column; gap: 3px; flex: 1; overflow: hidden; }
+  .folder-path { font-size: 12px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-style: italic; }
+  .folder-path.set { color: var(--accent); font-style: normal; }
+  .folder-files { font-size: 10px; color: var(--text-muted); letter-spacing: 0.05em; }
+
+  .meeting-title-input { width: 100%; background: transparent; border: none; border-bottom: 1px solid var(--border); outline: none; color: var(--text); font-family: 'Fraunces', serif; font-size: 28px; font-weight: 300; letter-spacing: -0.02em; padding: 0 0 14px; margin-bottom: 24px; transition: border-color 0.2s; }
+  .meeting-title-input:focus { border-color: var(--accent-dim); }
+  .meeting-title-input::placeholder { color: var(--text-muted); font-style: italic; }
+
+  .record-area { display: flex; align-items: center; gap: 20px; margin-bottom: 28px; }
+  .record-btn { display: flex; align-items: center; gap: 10px; background: var(--accent); color: #0e0f0d; border: none; border-radius: 40px; padding: 12px 24px; font-family: 'DM Mono', monospace; font-size: 13px; font-weight: 400; letter-spacing: 0.04em; cursor: pointer; transition: all 0.15s; }
+  .record-btn:hover:not(.disabled) { background: #d9ff70; transform: translateY(-1px); }
+  .record-btn.recording { background: var(--danger); color: #fff; animation: pulse-btn 2s infinite; }
+  .record-btn.disabled { background: var(--surface2); color: var(--text-muted); cursor: not-allowed; }
+  .pause-btn { display: flex; align-items: center; gap: 8px; background: var(--surface); border: 1px solid var(--border); color: var(--text-muted); border-radius: 40px; padding: 12px 20px; font-family: 'DM Mono', monospace; font-size: 13px; font-weight: 400; letter-spacing: 0.04em; cursor: pointer; transition: all 0.15s; white-space: nowrap; }
+  .pause-btn:hover { border-color: var(--text-muted); color: var(--text); }
+  .pause-btn.paused { border-color: var(--accent-dim); color: var(--accent); background: rgba(200,240,96,0.06); }
+
+  /* Audio source selector */
+  .source-row { display: flex; align-items: center; gap: 14px; margin-bottom: 18px; flex-wrap: wrap; }
+  .source-label { font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-muted); }
+  .source-options { display: flex; gap: 6px; }
+  .source-btn { background: var(--surface); border: 1px solid var(--border); color: var(--text-muted); border-radius: 8px; padding: 7px 14px; font-family: 'DM Mono', monospace; font-size: 12px; cursor: pointer; transition: all 0.15s; white-space: nowrap; }
+  .source-btn:hover { border-color: var(--text-muted); color: var(--text); }
+  .source-btn.active { border-color: var(--accent-dim); color: var(--accent); background: rgba(200,240,96,0.07); }
+  .source-hint { font-size: 11px; color: var(--text-muted); font-style: italic; }
+  @keyframes pulse-btn { 0%,100%{box-shadow:0 0 0 0 rgba(224,90,90,0.4);} 50%{box-shadow:0 0 0 8px rgba(224,90,90,0);} }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+  .recording .dot { animation: blink 1s infinite; }
+  @keyframes blink { 0%,100%{opacity:1;} 50%{opacity:0.2;} }
+  .timer { font-size: 22px; font-weight: 300; color: var(--text-muted); letter-spacing: 0.05em; min-width: 70px; }
+  .timer.active { color: var(--text); }
+  .waveform { display: flex; align-items: center; gap: 3px; height: 28px; flex: 1; }
+  .waveform .bar { width: 3px; border-radius: 2px; background: var(--border); height: 6px; }
+  .waveform.active .bar { background: var(--accent-dim); animation: wave 0.8s ease-in-out infinite; }
+  .waveform .bar:nth-child(1){animation-delay:0s} .waveform .bar:nth-child(2){animation-delay:.1s} .waveform .bar:nth-child(3){animation-delay:.2s} .waveform .bar:nth-child(4){animation-delay:.3s} .waveform .bar:nth-child(5){animation-delay:.4s} .waveform .bar:nth-child(6){animation-delay:.3s} .waveform .bar:nth-child(7){animation-delay:.2s} .waveform .bar:nth-child(8){animation-delay:.1s} .waveform .bar:nth-child(9){animation-delay:0s} .waveform .bar:nth-child(10){animation-delay:.15s} .waveform .bar:nth-child(11){animation-delay:.25s} .waveform .bar:nth-child(12){animation-delay:.35s}
+  @keyframes wave { 0%,100%{height:4px;} 50%{height:20px;} }
+
+  /* Segment chunks in transcript */
+  .transcript-chunk { margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid var(--border); animation: fadeIn 0.3s ease; }
+  .transcript-chunk:last-child { border-bottom: none; }
+  .chunk-label { font-size: 10px; color: var(--text-muted); letter-spacing: 0.06em; margin-bottom: 3px; }
+
+  .panels { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+  @media (max-width:640px) { .panels { grid-template-columns: 1fr; } }
+  .panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); display: flex; flex-direction: column; min-height: 320px; overflow: hidden; }
+  .panel-header { display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+  .panel-title { font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-muted); }
+  .panel-badge { font-size: 10px; padding: 3px 8px; border-radius: 12px; background: var(--surface2); color: var(--text-muted); }
+  .panel-badge.live { background: rgba(224,90,90,0.15); color: #e05a5a; }
+  .panel-badge.ok { background: rgba(200,240,96,0.12); color: var(--accent); }
+  .panel-body { flex: 1; padding: 18px; overflow-y: auto; font-size: 13px; line-height: 1.75; }
+  .panel-body::-webkit-scrollbar { width: 4px; } .panel-body::-webkit-scrollbar-track { background: transparent; } .panel-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+  .placeholder-text { color: var(--text-muted); font-style: italic; font-size: 12px; line-height: 1.6; }
+  @keyframes fadeIn { from{opacity:0;transform:translateY(3px)} to{opacity:1;transform:translateY(0)} }
+  .summary-block { margin-bottom: 20px; animation: fadeIn 0.4s ease; }
+  .summary-block h3 { font-family: 'Fraunces', serif; font-size: 15px; font-weight: 400; color: var(--accent); margin-bottom: 8px; }
+  .summary-block ul { list-style: none; padding: 0; }
+  .summary-block ul li { padding-left: 14px; position: relative; margin-bottom: 5px; font-size: 13px; line-height: 1.6; }
+  .summary-block ul li::before { content: '–'; position: absolute; left: 0; color: var(--text-muted); }
+  .summary-block p { font-size: 13px; line-height: 1.75; }
+
+  .backlinks-panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 20px; overflow: hidden; }
+  .backlinks-header { display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; border-bottom: 1px solid var(--border); }
+  .backlinks-title { font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-muted); }
+  .backlinks-body { padding: 14px 18px; display: flex; flex-wrap: wrap; gap: 8px; min-height: 48px; align-items: center; }
+  .backlink-tag { display: inline-flex; align-items: center; gap: 4px; background: rgba(200,240,96,0.08); border: 1px solid var(--accent-dim); border-radius: 20px; padding: 4px 12px; font-size: 11px; color: var(--accent); }
+  .backlink-tag .brackets { opacity: 0.4; }
+  .backlinks-empty { font-size: 12px; color: var(--text-muted); font-style: italic; }
+
+  /* Action items panel */
+  .actions-panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 16px; overflow: hidden; }
+  .actions-header { display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; border-bottom: 1px solid var(--border); }
+  .actions-title { font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-muted); }
+  .actions-body { padding: 14px 18px; min-height: 48px; }
+  .action-item { display: flex; align-items: baseline; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--border); animation: fadeIn 0.3s ease; }
+  .action-item:last-child { border-bottom: none; }
+  .action-check { width: 14px; height: 14px; border: 1px solid var(--border); border-radius: 3px; flex-shrink: 0; cursor: pointer; margin-top: 2px; }
+  .action-check.done { background: var(--accent-dim); border-color: var(--accent-dim); }
+  .action-text { font-size: 12px; line-height: 1.5; flex: 1; }
+  .action-who { font-size: 10px; color: var(--accent); letter-spacing: 0.06em; white-space: nowrap; }
+  .action-time { font-size: 10px; color: var(--text-muted); white-space: nowrap; }
+  .actions-empty { font-size: 12px; color: var(--text-muted); font-style: italic; }
+
+  /* Draft autosave status */
+  .draft-status { font-size: 10px; color: var(--text-muted); letter-spacing: 0.05em; margin: -6px 0 14px; min-height: 14px; text-align: right; }
+
+  /* Notes panel */
+  .notes-panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 16px; overflow: hidden; }
+  .notes-header { display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; border-bottom: 1px solid var(--border); }
+  .notes-title { font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-muted); }
+  .notes-body { padding: 14px 18px; }
+  .notes-textarea { width: 100%; min-height: 90px; resize: vertical; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-family: 'DM Mono', monospace; font-size: 13px; font-weight: 300; line-height: 1.7; padding: 12px 14px; outline: none; transition: border-color 0.2s; }
+  .notes-textarea:focus { border-color: var(--accent-dim); }
+  .notes-textarea::placeholder { color: var(--text-muted); font-style: italic; }
+
+  /* Manual action add row */
+  .actions-add { display: flex; gap: 8px; padding: 12px 18px; border-top: 1px solid var(--border); }
+  .action-add-who { width: 90px; flex-shrink: 0; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-family: 'DM Mono', monospace; font-size: 12px; font-weight: 300; padding: 8px 10px; outline: none; }
+  .action-add-text { flex: 1; min-width: 0; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-family: 'DM Mono', monospace; font-size: 12px; font-weight: 300; padding: 8px 10px; outline: none; }
+  .action-add-who:focus, .action-add-text:focus { border-color: var(--accent-dim); }
+  .action-add-who::placeholder, .action-add-text::placeholder { color: var(--text-muted); }
+  .action-add-btn { flex-shrink: 0; width: 34px; background: var(--surface); border: 1px solid var(--accent-dim); color: var(--accent); border-radius: 6px; font-size: 18px; line-height: 1; cursor: pointer; transition: background 0.15s; }
+  .action-add-btn:hover { background: rgba(200,240,96,0.08); }
+  /* manual-tagged action items get a subtle marker */
+  .action-item.manual .action-who::before { content: '✎ '; opacity: 0.7; }
+
+  /* Voice command toast */
+  .cmd-toast { position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%) translateY(20px); background: var(--surface); border: 1px solid var(--accent-dim); border-radius: 40px; padding: 10px 20px; font-size: 12px; color: var(--accent); display: flex; align-items: center; gap: 8px; opacity: 0; transition: all 0.25s; pointer-events: none; z-index: 100; white-space: nowrap; box-shadow: 0 8px 32px rgba(0,0,0,0.4); }
+  .cmd-toast.visible { opacity: 1; transform: translateX(-50%) translateY(0); }
+  .cmd-toast .cmd-icon { font-size: 14px; }
+
+  /* Transcript command highlight */
+  .transcript-chunk.cmd { border-left: 2px solid var(--accent-dim); padding-left: 10px; }
+
+  /* Recording indicator strip */
+  .rec-strip { display: none; align-items: center; gap: 10px; padding: 10px 16px; background: rgba(224,90,90,0.06); border: 1px solid rgba(224,90,90,0.2); border-radius: 8px; margin-bottom: 12px; font-size: 11px; color: #e08080; }
+  .rec-strip.visible { display: flex; }
+  .rec-strip .rec-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--danger); animation: blink 1s infinite; flex-shrink: 0; }
+
+  .toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  .toolbar-left { display: flex; gap: 10px; flex-wrap: wrap; }
+  .btn-secondary { background: var(--surface); border: 1px solid var(--border); color: var(--text-muted); border-radius: 8px; padding: 10px 18px; font-family: 'DM Mono', monospace; font-size: 12px; cursor: pointer; transition: all 0.15s; letter-spacing: 0.03em; }
+  .btn-secondary:hover:not(:disabled) { border-color: var(--text-muted); color: var(--text); }
+  .btn-secondary:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn-primary { background: var(--surface); border: 1px solid var(--accent-dim); color: var(--accent); border-radius: 8px; padding: 10px 20px; font-family: 'DM Mono', monospace; font-size: 12px; cursor: pointer; transition: all 0.15s; letter-spacing: 0.03em; }
+  .btn-primary:hover:not(:disabled) { background: rgba(200,240,96,0.07); }
+  .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+  .spinner { display: inline-block; width: 12px; height: 12px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; vertical-align: middle; margin-right: 6px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .status-bar { margin-top: 14px; font-size: 11px; color: var(--text-muted); letter-spacing: 0.04em; min-height: 16px; text-align: center; }
+  .status-bar.error { color: var(--danger); }
+  .status-bar.success { color: var(--accent); }
+
+  /* Groq badge */
+  .groq-badge { display: inline-flex; align-items: center; gap: 5px; font-size: 10px; color: var(--text-muted); background: var(--surface2); border: 1px solid var(--border); border-radius: 12px; padding: 2px 8px; }
+  .groq-badge .g { color: #ff6b35; font-weight: 400; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="logo">møte<span>.</span>no</div>
+    <div class="groq-badge"><span class="g">⚡</span> Groq Whisper large-v3</div>
+  </header>
+
+  <!-- API keys -->
+  <div class="config-grid" style="grid-template-columns: 1fr;">
+    <div class="config-row" id="groqRow">
+      <div class="api-label">Groq</div>
+      <input class="api-input" type="password" id="groqKeyInput" placeholder="gsk_..." autocomplete="off">
+      <div class="api-dot" id="groqDot"></div>
+    </div>
+  </div>
+  <div style="font-size:10px;color:var(--text-muted);margin-bottom:20px;letter-spacing:0.04em;">
+    Én nøkkel for alt — tale (Whisper large-v3) og oppsummering (Llama 3.3 70b) &nbsp;·&nbsp;
+    <a href="https://console.groq.com/keys" target="_blank" style="color:var(--text-muted);text-decoration:underline;">console.groq.com/keys</a> (gratis)
+  </div>
+
+  <!-- Folder picker -->
+  <div class="folder-row">
+    <button class="folder-btn" onclick="pickFolder()">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+      Velg mappe
+    </button>
+    <div class="folder-info">
+      <div class="folder-path" id="folderPath">Ingen mappe valgt</div>
+      <div class="folder-files" id="folderFiles"></div>
+    </div>
+  </div>
+
+  <!-- Meeting title -->
+  <input class="meeting-title-input" id="meetingTitle" placeholder="Møtetittel..." type="text">
+
+  <!-- Audio source selector -->
+  <div class="source-row">
+    <span class="source-label">Lydkilde:</span>
+    <div class="source-options">
+      <button class="source-btn active" id="srcMic" data-src="mic" onclick="setSource('mic')">🎤 Mikrofon</button>
+      <button class="source-btn" id="srcSystem" data-src="system" onclick="setSource('system')">🔊 Skjermlyd</button>
+      <button class="source-btn" id="srcBoth" data-src="both" onclick="setSource('both')">🎤+🔊 Begge</button>
+    </div>
+    <span class="source-hint" id="sourceHint">Tar opp din egen mikrofon</span>
+  </div>
+
+  <!-- Record controls -->
+  <div class="record-area">
+    <button class="record-btn disabled" id="recordBtn" onclick="toggleRecord()">
+      <div class="dot"></div>
+      <span id="recordLabel">Ta opp</span>
+    </button>
+    <button class="pause-btn" id="pauseBtn" onclick="togglePause()" style="display:none;">
+      <span id="pauseLabel">Pause</span>
+    </button>
+    <div class="timer" id="timer">00:00</div>
+    <div class="waveform" id="waveform">
+      <div class="bar"></div><div class="bar"></div><div class="bar"></div><div class="bar"></div>
+      <div class="bar"></div><div class="bar"></div><div class="bar"></div><div class="bar"></div>
+      <div class="bar"></div><div class="bar"></div><div class="bar"></div><div class="bar"></div>
+    </div>
+  </div>
+
+  <!-- Live recording strip -->
+  <div class="rec-strip" id="recStrip">
+    <div class="rec-dot"></div>
+    <span id="recStripMsg">Tar opp — transkriberes automatisk hvert 60. sekund</span>
+  </div>
+  <div class="draft-status" id="draftStatus"></div>
+
+  <!-- Manuelle notater underveis -->
+  <div class="notes-panel">
+    <div class="notes-header">
+      <div class="notes-title">Mine notater</div>
+      <div class="panel-badge" id="notesBadge">Skriv mens møtet pågår</div>
+    </div>
+    <div class="notes-body">
+      <textarea id="notesInput" class="notes-textarea" placeholder="Egne notater, tanker, sitater — lagres i .md under «Mine notater». Under opptak: Enter setter inn [mm:ss]-tidsstempel, Shift+Enter gir vanlig linjeskift."></textarea>
+    </div>
+  </div>
+
+  <!-- Panels -->
+  <div class="panels">
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">Transkripsjon</div>
+        <div class="panel-badge" id="transcriptBadge">Klar</div>
+      </div>
+      <div class="panel-body" id="transcriptBody">
+        <div class="placeholder-text">Groq Whisper large-v3 transkriberer norsk tale hvert 60. sekund. Klikk stopp når som helst for å transkribere umiddelbart.</div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">AI-oppsummering</div>
+        <div class="panel-badge" id="summaryBadge">Venter</div>
+      </div>
+      <div class="panel-body" id="summaryBody">
+        <div class="placeholder-text">Strukturert oppsummering via Claude etter opptak.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Action items -->
+  <div class="actions-panel">
+    <div class="actions-header">
+      <div class="actions-title">Oppgaver</div>
+      <div class="panel-badge" id="actionsBadge">Si "oppgave til [navn]..."</div>
+    </div>
+    <div class="actions-body" id="actionsBody">
+      <span class="actions-empty">Si "oppgave til Jonas: følg opp budsjettet" midt i møtet — appen fanger det automatisk.</span>
+    </div>
+    <div class="actions-add">
+      <input type="text" id="manualActionWho" class="action-add-who" placeholder="Hvem">
+      <input type="text" id="manualActionText" class="action-add-text" placeholder="Oppgave — trykk Enter for å legge til">
+      <button class="action-add-btn" onclick="addManualAction()">+</button>
+    </div>
+  </div>
+
+  <!-- Backlinks -->
+  <div class="backlinks-panel">
+    <div class="backlinks-header">
+      <div class="backlinks-title">Foreslåtte backlinks</div>
+      <div class="panel-badge" id="backlinksBadge">Venter på mappe</div>
+    </div>
+    <div class="backlinks-body" id="backlinksBody">
+      <span class="backlinks-empty">Velg en mappe — eksisterende .md-filer skannes automatisk</span>
+    </div>
+  </div>
+
+  <!-- Toolbar -->
+  <div class="toolbar">
+    <div class="toolbar-left">
+      <button class="btn-secondary" onclick="clearAll()">Tøm</button>
+      <button class="btn-secondary" id="copyBtn" onclick="copyTranscript()" disabled>Kopier transkripsjon</button>
+      <button class="btn-secondary" id="summarizeBtn" onclick="summarize()" disabled>Generer oppsummering</button>
+    </div>
+    <button class="btn-primary" id="saveBtn" onclick="saveToFolder()" disabled>Lagre som .md</button>
+  </div>
+
+  <div class="status-bar" id="statusBar"></div>
+</div>
+
+<!-- Voice command toast -->
+<div class="cmd-toast" id="cmdToast">
+  <span class="cmd-icon">🎯</span>
+  <span id="cmdToastMsg">Oppgave registrert</span>
+</div>
+
+<script>
+  // ── State ──────────────────────────────────────────
+  let mediaRecorder = null, audioChunks = [], isRecording = false;
+  let isPaused = false, wakeLock = null;
+  let timerInterval = null, segmentInterval = null, seconds = 0;
+  let fullTranscript = '', groqKey = '';
+  let summaryData = null, dirHandle = null;
+  let draftInterval = null, draftSaving = false; // autolagring av kladd
+  let vaultFiles = [], confirmedLinks = [];
+  let chunkCount = 0;
+  let actionItems = []; // { text, who, timestamp, done }
+
+  // ── Voice command patterns (norsk) ─────────────────
+  // Triggers: "oppgave til X: Y", "oppgave for X: Y", "action til X: Y",
+  //           "huskelapp til X: Y", "TODO til X: Y"
+  const CMD_RE = /(?:oppgave|action|huskelapp|todo|task)\s+(?:til|for)\s+([^:,\.]+?)\s*[:\-–]\s*(.+?)(?:\.|$)/gi;
+
+  function extractCommands(text) {
+    const found = [];
+    let m;
+    CMD_RE.lastIndex = 0;
+    while ((m = CMD_RE.exec(text)) !== null) {
+      found.push({ who: m[1].trim(), text: m[2].trim() });
+    }
+    return found;
+  }
+
+  function processCommandsInChunk(rawText, timestamp) {
+    const cmds = extractCommands(rawText);
+    if (cmds.length === 0) return false;
+    cmds.forEach(cmd => {
+      actionItems.push({ text: cmd.text, who: cmd.who, timestamp, done: false });
+    });
+    renderActionItems();
+    showCmdToast(cmds.length === 1
+      ? 'Oppgave til ' + cmds[0].who + ' registrert'
+      : cmds.length + ' oppgaver registrert');
+    return true;
+  }
+
+  function renderActionItems() {
+    const body = document.getElementById('actionsBody');
+    const badge = document.getElementById('actionsBadge');
+    if (actionItems.length === 0) {
+      body.innerHTML = '<span class="actions-empty">Si "oppgave til Jonas: følg opp budsjettet" midt i møtet — appen fanger det automatisk.</span>';
+      badge.textContent = 'Si "oppgave til [navn]..."';
+      badge.className = 'panel-badge';
+      return;
+    }
+    badge.textContent = actionItems.length + ' oppgave' + (actionItems.length > 1 ? 'r' : '');
+    badge.className = 'panel-badge ok';
+    body.innerHTML = '';
+    actionItems.forEach((item, i) => {
+      const row = document.createElement('div');
+      row.className = 'action-item' + (item.manual ? ' manual' : '');
+      row.innerHTML =
+        '<div class="action-check' + (item.done ? ' done' : '') + '" onclick="toggleAction(' + i + ')"></div>' +
+        '<div class="action-text">' + esc(item.text) + '</div>' +
+        '<div class="action-who">' + esc(item.who) + '</div>' +
+        '<div class="action-time">' + esc(item.timestamp) + '</div>';
+      body.appendChild(row);
+    });
+  }
+
+  function toggleAction(i) {
+    actionItems[i].done = !actionItems[i].done;
+    renderActionItems();
+  }
+
+  // ── Manuelle oppgaver ──────────────────────────────
+  function addManualAction() {
+    const whoEl = document.getElementById('manualActionWho');
+    const textEl = document.getElementById('manualActionText');
+    const text = textEl.value.trim();
+    if (!text) { textEl.focus(); return; }
+    const who = whoEl.value.trim() || 'ikke tildelt';
+    actionItems.push({ text, who, timestamp: fmt(seconds), done: false, manual: true });
+    renderActionItems();
+    showCmdToast('Oppgave lagt til manuelt');
+    whoEl.value = ''; textEl.value = ''; textEl.focus();
+    document.getElementById('summarizeBtn').disabled = false;
+  }
+
+  let toastTimer = null;
+  function showCmdToast(msg) {
+    const toast = document.getElementById('cmdToast');
+    document.getElementById('cmdToastMsg').textContent = msg;
+    toast.classList.add('visible');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toast.classList.remove('visible'), 3000);
+  }
+
+  // ── Key inputs ─────────────────────────────────────
+  document.getElementById('groqKeyInput').addEventListener('input', function() {
+    groqKey = this.value.trim();
+    const ok = groqKey.startsWith('gsk_') && groqKey.length > 10;
+    document.getElementById('groqDot').className = 'api-dot' + (ok ? ' ok' : '');
+    document.getElementById('groqRow').classList.toggle('valid', ok);
+    updateRecordBtn();
+  });
+
+
+
+  function updateRecordBtn() {
+    const ok = groqKey.startsWith('gsk_') && groqKey.length > 10;
+    document.getElementById('recordBtn').classList.toggle('disabled', !ok);
+  }
+
+  // Enter i manuell oppgave-input legger til oppgaven
+  ['manualActionWho','manualActionText'].forEach(id => {
+    document.getElementById(id).addEventListener('keydown', e => {
+      if (e.key === 'Enter') { e.preventDefault(); addManualAction(); }
+    });
+  });
+
+  // Auto-tidsstempling: Enter i notatfeltet under aktivt opptak setter inn
+  // [mm:ss] foran den nye linjen. Shift+Enter gir vanlig linjeskift uten stempel.
+  (function() {
+    const ni = document.getElementById('notesInput');
+    if (!ni) return;
+    ni.addEventListener('keydown', e => {
+      if (e.key === 'Enter' && !e.shiftKey && isRecording && !isPaused) {
+        e.preventDefault();
+        const stamp = '\n[' + fmt(seconds) + '] ';
+        const start = ni.selectionStart, end = ni.selectionEnd;
+        ni.value = ni.value.slice(0, start) + stamp + ni.value.slice(end);
+        const pos = start + stamp.length;
+        ni.selectionStart = ni.selectionEnd = pos;
+        ni.scrollTop = ni.scrollHeight;
+      }
+    });
+    // Stemple starten av en notatlinje første gang man skriver under opptak.
+    // Bruker innholdssjekk (ikke engangsflagg) så det fungerer for hvert nye møte.
+    ni.addEventListener('input', function() {
+      if (isRecording && !isPaused && ni.value.length === 1 && ni.value !== '\n') {
+        // Akkurat begynt å skrive på et tomt felt under opptak
+        ni.value = '[' + fmt(seconds) + '] ' + ni.value;
+        ni.selectionStart = ni.selectionEnd = ni.value.length;
+      }
+    });
+  })();
+
+  // ── Folder ─────────────────────────────────────────
+  async function pickFolder() {
+    try {
+      dirHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
+      document.getElementById('folderPath').textContent = '📁 ' + dirHandle.name;
+      document.getElementById('folderPath').className = 'folder-path set';
+      setStatus('Skanner vault…', '');
+      await scanVault();
+      updateSaveBtn();
+    } catch(e) { if (e.name !== 'AbortError') setStatus('Feil: ' + e.message, 'error'); }
+  }
+
+  async function scanVault() {
+    vaultFiles = [];
+    await scanDir(dirHandle, '');
+    document.getElementById('folderFiles').textContent =
+      vaultFiles.length > 0 ? vaultFiles.length + ' .md-filer funnet (rekursivt) — backlinks aktivert' : 'Ingen .md-filer ennå';
+    document.getElementById('backlinksBadge').textContent = vaultFiles.length + ' filer';
+    renderBacklinks();
+    setStatus('Klar. ' + vaultFiles.length + ' filer indeksert.', 'success');
+  }
+
+  async function scanDir(handle, pathPrefix) {
+    for await (const [name, entry] of handle.entries()) {
+      if (entry.kind === 'directory') {
+        // Recurse into subdirectories (skip hidden like .obsidian, .git)
+        if (!name.startsWith('.')) {
+          await scanDir(entry, pathPrefix + name + '/');
+        }
+      } else if (entry.kind === 'file' && name.endsWith('.md') && !name.startsWith('_kladd-')) {
+        const slug = name.replace(/^\d{4}-\d{2}-\d{2}-/, '').replace(/\.md$/, '');
+        vaultFiles.push({
+          name,
+          path: pathPrefix + name,
+          slug,
+          display: slug.replace(/-/g, ' '),
+          folder: pathPrefix.replace(/\/$/, '') || '(rot)'
+        });
+      }
+    }
+  }
+
+  function updateSaveBtn() {
+    document.getElementById('saveBtn').disabled = !(summaryData && dirHandle);
+  }
+
+  // ── Timer ──────────────────────────────────────────
+  function fmt(s) { return String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0'); }
+  function dateSlug() { const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+  function dateNo() { return new Date().toLocaleDateString('no-NO',{weekday:'long',day:'numeric',month:'long',year:'numeric'}); }
+
+  // ── Recording ─────────────────────────────────────
+  function toggleRecord() {
+    if (!groqKey.startsWith('gsk_')) return;
+    isRecording ? stopRecording() : startRecording();
+  }
+
+  // Holder live på mediastrømmen og valgt mimeType slik at vi kan
+  // stoppe + starte MediaRecorder på nytt for hvert segment.
+  let mediaStream = null, recMimeType = '';
+  // Lydkilde: 'mic' (mikrofon), 'system' (skjermlyd), 'both' (mikset).
+  // micStream/sysStream holdes for å kunne stoppe tracks ved opptaksslutt.
+  // audioCtx mikser kildene til én strøm ved 'both'.
+  let audioSource = 'mic', micStream = null, sysStream = null, audioCtx = null;
+
+  function setSource(src) {
+    if (isRecording) return; // ikke bytt kilde midt i opptak
+    audioSource = src;
+    ['srcMic','srcSystem','srcBoth'].forEach(id => {
+      document.getElementById(id).classList.toggle('active', document.getElementById(id).dataset.src === src);
+    });
+    const hint = document.getElementById('sourceHint');
+    hint.textContent = src === 'mic' ? 'Tar opp din egen mikrofon'
+      : src === 'system' ? 'Tar opp lyd fra valgt fane/skjerm (de andre deltakerne) — ikke din egen mikrofon'
+      : 'Tar opp både din mikrofon og lyd fra valgt fane/skjerm';
+  }
+
+  // Bygger lydstrømmen ut fra valgt kilde. Returnerer en MediaStream som
+  // kun inneholder lyd (video-tracks fra skjermdeling fjernes).
+  async function acquireStream() {
+    if (audioSource === 'mic') {
+      micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      return micStream;
+    }
+
+    if (audioSource === 'system') {
+      // getDisplayMedia krever video:true i de fleste nettlesere selv om vi
+      // bare vil ha lyd. Vi tar video, men beholder kun lyd-tracken.
+      const disp = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+      const audioTracks = disp.getAudioTracks();
+      disp.getVideoTracks().forEach(t => t.stop()); // vi trenger ikke video
+      if (audioTracks.length === 0) {
+        disp.getTracks().forEach(t => t.stop());
+        throw new Error('Ingen systemlyd delt. Husk å huke av «Del lyd» i delingsdialogen (velg en fane for best resultat).');
+      }
+      sysStream = new MediaStream(audioTracks);
+      audioTracks[0].addEventListener('ended', onSystemAudioEnded);
+      return sysStream;
+    }
+
+    // 'both': mikser mikrofon + skjermlyd til én strøm via Web Audio API.
+    micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const disp = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+    disp.getVideoTracks().forEach(t => t.stop());
+    const sysAudio = disp.getAudioTracks();
+    if (sysAudio.length === 0) {
+      // Falt tilbake til kun mikrofon hvis brukeren ikke delte lyd
+      disp.getTracks().forEach(t => t.stop());
+      setStatus('Ingen systemlyd delt — tar kun opp mikrofon.', '');
+      return micStream;
+    }
+    sysStream = new MediaStream(sysAudio);
+    sysAudio[0].addEventListener('ended', onSystemAudioEnded);
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const dest = audioCtx.createMediaStreamDestination();
+    audioCtx.createMediaStreamSource(micStream).connect(dest);
+    audioCtx.createMediaStreamSource(sysStream).connect(dest);
+    return dest.stream;
+  }
+
+  // Kalles hvis brukeren stopper skjermdelingen via nettleserens egen
+  // kontroll midt i et opptak. Avslutter opptaket pent.
+  function onSystemAudioEnded() {
+    if (isRecording) {
+      setStatus('Skjermdeling avsluttet — stopper opptak og transkriberer.', '');
+      stopRecording();
+    }
+  }
+
+  // Stopper alle lydkilder og lukker audio-context.
+  function teardownStreams() {
+    [mediaStream, micStream, sysStream].forEach(s => { if (s) s.getTracks().forEach(t => t.stop()); });
+    if (audioCtx) { try { audioCtx.close(); } catch(e){} audioCtx = null; }
+    mediaStream = micStream = sysStream = null;
+  }
+
+  async function startRecording() {
+    try {
+      mediaStream = await acquireStream();
+      // Hvis brukeren avbrøt skjermdeling stoppes alt under (tracks ended).
+      recMimeType = ['audio/webm;codecs=opus','audio/webm','audio/ogg;codecs=opus','audio/mp4']
+        .find(t => MediaRecorder.isTypeSupported(t)) || '';
+      isRecording = true; isPaused = false; chunkCount = 0;
+
+      startSegmentRecorder(); // starter første segment-opptaker
+      requestWakeLock();      // hold skjermen våken under lange møter
+      startDraftAutosave();   // autolagre kladd hvert 30. sek
+      if (!dirHandle) {
+        const ds = document.getElementById('draftStatus');
+        if (ds) ds.textContent = '⚠ Ingen mappe valgt — autolagring av kladd er av';
+      }
+
+      document.getElementById('recordBtn').classList.add('recording');
+      document.getElementById('recordBtn').classList.remove('disabled');
+      document.getElementById('recordLabel').textContent = 'Stopp';
+      const pb = document.getElementById('pauseBtn');
+      pb.style.display = 'flex'; pb.classList.remove('paused');
+      document.getElementById('pauseLabel').textContent = 'Pause';
+      document.getElementById('waveform').classList.add('active');
+      document.getElementById('transcriptBadge').textContent = '● Tar opp';
+      document.getElementById('transcriptBadge').className = 'panel-badge live';
+      document.getElementById('transcriptBody').innerHTML = '';
+      document.getElementById('recStrip').classList.add('visible');
+
+      seconds = 0;
+      timerInterval = setInterval(() => {
+        seconds++;
+        const t = document.getElementById('timer');
+        t.textContent = fmt(seconds);
+        t.classList.add('active');
+        const remaining = 60 - (seconds % 60);
+        document.getElementById('recStripMsg').textContent =
+          'Tar opp — transkriberes om ' + remaining + ' sek (eller trykk Stopp)';
+      }, 1000);
+
+      // Hvert 60. sekund: lukk gjeldende segment (gir komplett webm-fil
+      // med egen header) og start et nytt. Dette er nøkkelen til at lange
+      // møter (1 t+) fungerer — hver fil er selvstendig dekodbar for Whisper.
+      segmentInterval = setInterval(() => {
+        if (isRecording) rotateSegment();
+      }, 60000);
+
+      setStatus('Opptak startet — Groq Whisper large-v3', '');
+    } catch(e) {
+      isRecording = false;
+      teardownStreams();
+      const isAbort = e.name === 'NotAllowedError' || e.name === 'AbortError';
+      setStatus(isAbort ? 'Lydtilgang avbrutt eller nektet.' : ('Kunne ikke starte opptak: ' + e.message), 'error');
+    }
+  }
+
+  // Starter en fersk MediaRecorder for ett segment. Når den stoppes,
+  // samles alle dens chunks til ÉN komplett blob som transkriberes.
+  function startSegmentRecorder() {
+    audioChunks = [];
+    mediaRecorder = new MediaRecorder(mediaStream, recMimeType ? { mimeType: recMimeType } : {});
+    mediaRecorder.ondataavailable = e => { if (e.data.size > 0) audioChunks.push(e.data); };
+    mediaRecorder.onstop = () => {
+      // Bygg komplett fil fra dette segmentet og send til transkribering.
+      const isFinal = !isRecording;
+      flushSegment(isFinal);
+    };
+    mediaRecorder.start(); // ingen timeslice — én sammenhengende fil per segment
+  }
+
+  // Roterer: stopp gjeldende opptaker (utløser onstop → flushSegment),
+  // og start en ny dersom vi fortsatt tar opp.
+  function rotateSegment() {
+    if (mediaRecorder && mediaRecorder.state === 'recording') {
+      mediaRecorder.stop(); // onstop håndterer flush + ny start
+    }
+  }
+
+  function stopRecording() {
+    isRecording = false; isPaused = false;
+    clearInterval(timerInterval);
+    clearInterval(segmentInterval);
+    document.getElementById('recordBtn').classList.remove('recording');
+    document.getElementById('recordLabel').textContent = 'Ta opp';
+    const pb = document.getElementById('pauseBtn');
+    pb.style.display = 'none'; pb.classList.remove('paused');
+    document.getElementById('waveform').classList.remove('active');
+    document.getElementById('transcriptBadge').textContent = 'Transkriberer…';
+    document.getElementById('recStrip').classList.remove('visible');
+    // Stopp siste segment — onstop kjører flushSegment(true) som finaliserer.
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+      mediaRecorder.stop();
+    } else {
+      finalizeTranscript();
+    }
+    if (mediaStream) mediaStream.getTracks().forEach(t => t.stop());
+    teardownStreams();
+    releaseWakeLock();
+    stopDraftAutosave();
+    saveDraft(); // siste kladd så alt frem til stopp er trygt før oppsummering
+  }
+
+  // ── Pause / fortsett ───────────────────────────────
+  function togglePause() {
+    if (!isRecording) return;
+    isPaused ? resumeRecording() : pauseRecording();
+  }
+
+  function pauseRecording() {
+    isPaused = true;
+    clearInterval(timerInterval);
+    clearInterval(segmentInterval);
+    // Stopp gjeldende segment — onstop→flushSegment transkriberer det opptatte,
+    // men starter IKKE nytt segment siden isPaused er true.
+    if (mediaRecorder && mediaRecorder.state === 'recording') mediaRecorder.stop();
+    releaseWakeLock(); // ikke hold skjermen våken mens pauset
+    saveDraft();       // sikre kladd ved pausetidspunkt
+    document.getElementById('pauseBtn').classList.add('paused');
+    document.getElementById('pauseLabel').textContent = 'Fortsett';
+    document.getElementById('recordBtn').classList.remove('recording');
+    document.getElementById('waveform').classList.remove('active');
+    document.getElementById('transcriptBadge').textContent = '❚❚ Pauset';
+    document.getElementById('transcriptBadge').className = 'panel-badge';
+    document.getElementById('timer').classList.remove('active');
+    document.getElementById('recStripMsg').textContent = 'Pauset — trykk Fortsett for å fortsette opptaket';
+    setStatus('Opptak pauset.', '');
+  }
+
+  function resumeRecording() {
+    isPaused = false;
+    startSegmentRecorder(); // starter ferskt segment
+    requestWakeLock();
+    document.getElementById('pauseBtn').classList.remove('paused');
+    document.getElementById('pauseLabel').textContent = 'Pause';
+    document.getElementById('recordBtn').classList.add('recording');
+    document.getElementById('waveform').classList.add('active');
+    document.getElementById('transcriptBadge').textContent = '● Tar opp';
+    document.getElementById('transcriptBadge').className = 'panel-badge live';
+    document.getElementById('timer').classList.add('active');
+    // Restart timer + segment-rotasjon
+    timerInterval = setInterval(() => {
+      seconds++;
+      const t = document.getElementById('timer');
+      t.textContent = fmt(seconds);
+      t.classList.add('active');
+      const remaining = 60 - (seconds % 60);
+      document.getElementById('recStripMsg').textContent =
+        'Tar opp — transkriberes om ' + remaining + ' sek (eller trykk Stopp)';
+    }, 1000);
+    segmentInterval = setInterval(() => {
+      if (isRecording && !isPaused) rotateSegment();
+    }, 60000);
+    setStatus('Opptak fortsatt.', '');
+  }
+
+  // ── Wake Lock (hindrer at skjerm/fane sovner under lange møter) ──
+  async function requestWakeLock() {
+    if (!('wakeLock' in navigator)) return; // ikke støttet (f.eks. eldre nettleser)
+    try {
+      wakeLock = await navigator.wakeLock.request('screen');
+      wakeLock.addEventListener('release', () => { /* sluppet — re-akkvireres ved synlighet */ });
+    } catch(e) { /* stille — wakeLock er best-effort */ }
+  }
+
+  function releaseWakeLock() {
+    if (wakeLock) { try { wakeLock.release(); } catch(e){} wakeLock = null; }
+  }
+
+  // Chrome slipper wakeLock når fanen skjules. Re-akkvirer når den blir synlig
+  // igjen, dersom vi fortsatt tar opp (og ikke er pauset). Varsle også brukeren
+  // om at lyd kan struper i bakgrunnsfaner.
+  document.addEventListener('visibilitychange', async () => {
+    if (document.visibilityState === 'visible' && isRecording && !isPaused && !wakeLock) {
+      await requestWakeLock();
+    }
+    if (document.visibilityState === 'hidden' && isRecording && !isPaused) {
+      // Vis et diskret varsel i strip-en (synlig når man kommer tilbake)
+      const msg = document.getElementById('recStripMsg');
+      if (msg) msg.textContent = '⚠ Fanen var i bakgrunnen — hold møte.no synlig for stabilt opptak';
+    }
+  });
+
+  // Tar gjeldende segment-blob, transkriberer den, og starter neste
+  // segment dersom opptaket fortsatt pågår.
+  async function flushSegment(isFinal) {
+    const chunks = [...audioChunks];
+    audioChunks = [];
+    // Start neste segment kun hvis vi fortsatt tar opp OG ikke er pauset.
+    if (!isFinal && isRecording && !isPaused) startSegmentRecorder();
+    await transcribeBlob(chunks, isFinal);
+  }
+
+  // ── Transcribe via Groq Whisper ────────────────────
+  async function transcribeBlob(chunks, isFinal = false) {
+    if (!chunks || chunks.length === 0) {
+      if (isFinal) finalizeTranscript();
+      return;
+    }
+    const mimeType = recMimeType || 'audio/webm';
+    const blob = new Blob(chunks, { type: mimeType });
+    if (blob.size < 2000) { if (isFinal) finalizeTranscript(); return; }
+
+    const ext = mimeType.includes('ogg') ? 'ogg' : mimeType.includes('mp4') ? 'm4a' : 'webm';
+    const file = new File([blob], 'audio.' + ext, { type: mimeType });
+
+    chunkCount++;
+    const label = 'Segment ' + chunkCount + ' (' + fmt(seconds) + ')';
+    setStatus('Transkriberer via Groq…', '');
+
+    const buildForm = () => {
+      const fd = new FormData();
+      fd.append('file', file);
+      fd.append('model', 'whisper-large-v3');
+      fd.append('language', 'no');
+      fd.append('response_format', 'text');
+      fd.append('temperature', '0');
+      return fd;
+    };
+
+    // Inntil 4 forsøk med eksponentiell backoff ved rate-limit (429) eller
+    // midlertidige serverfeil (5xx). Respekterer Retry-After-header når den finnes.
+    const maxAttempts = 4;
+    let lastErr = null;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        const res = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
+          method: 'POST',
+          headers: { 'Authorization': 'Bearer ' + groqKey },
+          body: buildForm()
+        });
+
+        if (res.status === 429 || res.status >= 500) {
+          const retryAfter = parseFloat(res.headers.get('retry-after'));
+          const waitMs = !isNaN(retryAfter) ? retryAfter * 1000 : Math.min(2000 * 2 ** (attempt - 1), 15000);
+          if (attempt < maxAttempts) {
+            setStatus('Groq rate-limit — venter ' + Math.round(waitMs/1000) + ' s (forsøk ' + attempt + '/' + (maxAttempts-1) + ')…', '');
+            await new Promise(r => setTimeout(r, waitMs));
+            continue;
+          }
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.error?.message || ('Rate-limit (HTTP ' + res.status + ') etter ' + maxAttempts + ' forsøk'));
+        }
+
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.error?.message || 'HTTP ' + res.status);
+        }
+
+        const text = (await res.text()).trim();
+        if (text) {
+          fullTranscript += (fullTranscript ? ' ' : '') + text;
+          const hasCmd = processCommandsInChunk(text, fmt(seconds));
+          appendChunk(text, label, hasCmd);
+          document.getElementById('copyBtn').disabled = false;
+          document.getElementById('summarizeBtn').disabled = false;
+        }
+        if (isFinal) finalizeTranscript();
+        else setStatus('', '');
+        return; // suksess — avslutt retry-løkken
+      } catch(e) {
+        lastErr = e;
+        // Nettverksfeil: prøv igjen hvis vi har forsøk igjen
+        if (attempt < maxAttempts) {
+          await new Promise(r => setTimeout(r, Math.min(2000 * 2 ** (attempt - 1), 15000)));
+          continue;
+        }
+      }
+    }
+    // Alle forsøk feilet — ikke mist segmentet stille
+    setStatus('Groq-feil på ' + label + ': ' + (lastErr?.message || 'ukjent') + ' (segment hoppet over)', 'error');
+    appendChunk('[transkribering feilet for dette segmentet]', label + ' ⚠', false);
+    if (isFinal) finalizeTranscript();
+  }
+
+  function finalizeTranscript() {
+    document.getElementById('transcriptBadge').textContent = 'Ferdig';
+    document.getElementById('transcriptBadge').className = 'panel-badge';
+    setStatus('Opptak ferdig. Klar for oppsummering.', 'success');
+  }
+
+  function appendChunk(text, label, hasCmd = false) {
+    const body = document.getElementById('transcriptBody');
+    const div = document.createElement('div');
+    div.className = 'transcript-chunk' + (hasCmd ? ' cmd' : '');
+    div.innerHTML = '<div class="chunk-label">' + label + (hasCmd ? ' 🎯' : '') + '</div><div>' + esc(text) + '</div>';
+    body.appendChild(div);
+    body.scrollTop = body.scrollHeight;
+  }
+
+  // ── Summarize via Claude ───────────────────────────
+  async function summarize() {
+    const hasNotes = (document.getElementById('notesInput')?.value || '').trim().length > 0;
+    if (!fullTranscript.trim() && !hasNotes) return;
+    if (!groqKey.startsWith('gsk_')) {
+      setStatus('Legg inn Groq API-nøkkel for oppsummering.', 'error'); return;
+    }
+    const btn = document.getElementById('summarizeBtn');
+    const badge = document.getElementById('summaryBadge');
+    btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>Genererer…';
+    badge.textContent = 'Genererer'; badge.className = 'panel-badge live';
+
+    const title = document.getElementById('meetingTitle').value.trim() || 'Møtereferat';
+    const myNotes = (document.getElementById('notesInput')?.value || '').trim();
+    const notesBlock = myNotes ? '\n\nBrukerens egne notater (vektlegg disse — de er kuratert av møtedeltakeren):\n' + myNotes : '';
+    const vaultList = vaultFiles.length > 0
+      ? '\n\nEksisterende filer i vault:\n' + vaultFiles.map(f => '- ' + f.display + ' (' + f.path + ')').join('\n')
+      : '';
+
+    try {
+      const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + groqKey },
+        body: JSON.stringify({
+          model: 'llama-3.3-70b-versatile',
+          temperature: 0.2,
+          response_format: { type: 'json_object' },
+          messages: [
+            {
+              role: 'system',
+              content: 'Du er en presis norsk møteassistent og Obsidian-ekspert. Returner KUN et JSON-objekt med feltene: sammendrag (streng), nokkelPunkter (array av strenger), beslutninger (array av strenger), oppfolgingspunkter (array av strenger, format: "Oppgave — ansvarlig: navn eller ukjent"), stemning (streng), backlinks (array av filnavn fra vault som er genuint relevante for møteinnholdet, uten .md-endelse og uten [[ ]]). Tom array hvis ingen er relevante.'
+            },
+            {
+              role: 'user',
+              content: 'Møtetittel: ' + title + '\n\nTranskripsjon:\n' + fullTranscript + notesBlock + vaultList
+            }
+          ]
+        })
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error?.message || 'HTTP ' + res.status);
+      }
+      const data = await res.json();
+      const raw = data.choices?.[0]?.message?.content || '';
+      summaryData = JSON.parse(raw);
+      summaryData._title = title;
+      summaryData._dateSlug = dateSlug();
+      summaryData._dateNorwegian = dateNo();
+      summaryData._transcript = fullTranscript.trim();
+      summaryData._duration = fmt(seconds);
+      confirmedLinks = resolveBacklinks(summaryData.backlinks || []);
+      summaryData._backlinks = confirmedLinks;
+      renderSummary(summaryData);
+      renderBacklinks();
+      badge.textContent = 'Ferdig'; badge.className = 'panel-badge ok';
+      setStatus('Oppsummering generert.' + (confirmedLinks.length ? ' ' + confirmedLinks.length + ' backlink(s) foreslått.' : ''), 'success');
+      updateSaveBtn();
+    } catch(e) {
+      document.getElementById('summaryBody').innerHTML = '<div class="placeholder-text" style="color:var(--danger)">Feil: ' + esc(e.message) + '</div>';
+      badge.textContent = 'Feil'; badge.className = 'panel-badge';
+      setStatus('Feil: ' + e.message, 'error');
+    } finally { btn.disabled = false; btn.textContent = 'Generer oppsummering'; }
+  }
+
+  function resolveBacklinks(suggested) {
+    const out = [];
+    suggested.forEach(s => {
+      const norm = s.toLowerCase().replace(/[-_]/g,' ').trim();
+      const match = vaultFiles.find(f =>
+        f.display.toLowerCase() === norm ||
+        f.slug.toLowerCase().replace(/-/g,' ') === norm ||
+        f.name.replace(/\.md$/,'').toLowerCase() === s.toLowerCase()
+      );
+      out.push(match ? match.slug.replace(/-/g,' ') : s.trim());
+    });
+    return [...new Set(out.filter(Boolean))];
+  }
+
+  function renderSummary(d) {
+    const body = document.getElementById('summaryBody');
+    body.innerHTML = '';
+    if (d.sammendrag) body.appendChild(mkBlock('Sammendrag', '<p>' + esc(d.sammendrag) + '</p>'));
+    [['nokkelPunkter','Nøkkelpunkter'],['beslutninger','Beslutninger'],['oppfolgingspunkter','Oppfølgingspunkter']].forEach(([k,l]) => {
+      if (d[k]?.length) body.appendChild(mkBlock(l, '<ul>' + d[k].map(i => '<li>' + esc(i) + '</li>').join('') + '</ul>'));
+    });
+    if (d.stemning) body.appendChild(mkBlock('Stemning', '<p style="color:var(--text-muted);font-style:italic">' + esc(d.stemning) + '</p>'));
+  }
+
+  function mkBlock(h, inner) {
+    const b = document.createElement('div'); b.className = 'summary-block';
+    b.innerHTML = '<h3>' + h + '</h3>' + inner; return b;
+  }
+
+  function renderBacklinks() {
+    const body = document.getElementById('backlinksBody');
+    if (confirmedLinks.length === 0) {
+      body.innerHTML = vaultFiles.length === 0
+        ? '<span class="backlinks-empty">Velg en mappe — eksisterende .md-filer skannes automatisk</span>'
+        : '<span class="backlinks-empty">Generer oppsummering for å se foreslåtte lenker.</span>';
+      return;
+    }
+    body.innerHTML = '';
+    confirmedLinks.forEach(link => {
+      const tag = document.createElement('span');
+      tag.className = 'backlink-tag';
+      tag.innerHTML = '<span class="brackets">[[</span>' + esc(link) + '<span class="brackets">]]</span>';
+      body.appendChild(tag);
+    });
+  }
+
+  // ── Save ───────────────────────────────────────────
+  async function saveToFolder() {
+    if (!summaryData || !dirHandle) return;
+    const btn = document.getElementById('saveBtn');
+    btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>Lagrer…';
+    const d = summaryData;
+    const slug = d._title.toLowerCase()
+      .replace(/æ/g,'ae').replace(/ø/g,'oe').replace(/å/g,'aa')
+      .replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
+    const filename = d._dateSlug + '-' + slug + '.md';
+    try {
+      const fh = await dirHandle.getFileHandle(filename, { create: true });
+      const w = await fh.createWritable();
+      await w.write(buildMarkdown(d));
+      await w.close();
+      await removeDraft(); // rydd bort kladdefilen — ferdig referat er lagret
+      await scanVault();
+      setStatus('✓ Lagret: ' + filename + ' (kladd ryddet)', 'success');
+    } catch(e) { setStatus('Lagringsfeil: ' + e.message, 'error'); }
+    finally { btn.disabled = false; btn.textContent = 'Lagre som .md'; updateSaveBtn(); }
+  }
+
+  function buildMarkdown(d) {
+    const L = [];
+    L.push('---', 'tittel: "' + d._title + '"', 'dato: ' + d._dateSlug, 'varighet: ' + d._duration, 'tags: [møte, referat]');
+    if (d._backlinks?.length) { L.push('relatert:'); d._backlinks.forEach(bl => L.push('  - "' + bl + '"')); }
+    L.push('---', '');
+    L.push('# ' + d._title, '');
+    L.push('**Dato:** ' + d._dateNorwegian + '  ', '**Varighet:** ' + d._duration, '');
+    if (d._backlinks?.length) { L.push('**Relatert:** ' + d._backlinks.map(bl => '[[' + bl + ']]').join(' · '), ''); }
+    L.push('---', '');
+    if (d.sammendrag) { L.push('## 📋 Sammendrag', '', d.sammendrag, ''); }
+    if (d.nokkelPunkter?.length) { L.push('## 🔑 Nøkkelpunkter', ''); d.nokkelPunkter.forEach(p => L.push('- ' + p)); L.push(''); }
+    if (d.beslutninger?.length) { L.push('## ✅ Beslutninger', ''); d.beslutninger.forEach(p => L.push('- ' + p)); L.push(''); }
+    if (d.oppfolgingspunkter?.length) { L.push('## 🎯 Oppfølgingspunkter', ''); d.oppfolgingspunkter.forEach(p => L.push('- [ ] ' + p)); L.push(''); }
+    // Mine notater (manuelt skrevet underveis)
+    const myNotes = (document.getElementById('notesInput')?.value || '').trim();
+    if (myNotes) {
+      L.push('## ✍️ Mine notater', '', myNotes, '');
+    }
+    // Oppgaver — både talekommandoer og manuelt lagt til
+    if (actionItems.length) {
+      L.push('## ⚡ Oppgaver', '');
+      actionItems.forEach(a => {
+        const src = a.manual ? ' ✎' : '';
+        L.push('- [' + (a.done ? 'x' : ' ') + '] ' + a.text + ' — ' + a.who + ' (' + a.timestamp + ')' + src);
+      });
+      L.push('');
+    }
+    if (d.stemning) { L.push('## 💬 Stemning', '', '> ' + d.stemning, ''); }
+    L.push('---', '', '## 📝 Full transkripsjon', '', d._transcript, '');
+    return L.join('\n');
+  }
+
+  // ── Autolagring av kladd ───────────────────────────
+  // Skriver en rå kladd (transkripsjon + notater + oppgaver) til en fast
+  // kladdefil under opptak. Forsikring mot at fanen krasjer før ordentlig
+  // lagring. Kladden ryddes bort når møtet lagres som ferdig .md.
+  function draftSlug() {
+    const raw = (document.getElementById('meetingTitle')?.value || '').trim() || 'aktivt-mote';
+    const s = raw.toLowerCase()
+      .replace(/æ/g,'ae').replace(/ø/g,'oe').replace(/å/g,'aa')
+      .replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
+    return s || 'aktivt-mote';
+  }
+  function draftFilename() { return '_kladd-' + draftSlug() + '.md'; }
+
+  function buildDraftMarkdown() {
+    const title = (document.getElementById('meetingTitle')?.value || '').trim() || 'Møtereferat (kladd)';
+    const myNotes = (document.getElementById('notesInput')?.value || '').trim();
+    const L = [];
+    L.push('---', 'tittel: "' + title + '"', 'dato: ' + dateSlug(), 'varighet: ' + fmt(seconds),
+           'tags: [møte, kladd]', 'status: kladd-pågår', 'sist_lagret: ' + new Date().toISOString(), '---', '');
+    L.push('> ⚠️ **KLADD** — autolagret under opptak ' + new Date().toLocaleTimeString('no-NO') +
+           '. Generer oppsummering og «Lagre som .md» for ferdig referat.', '');
+    L.push('# ' + title + ' (kladd)', '');
+    L.push('**Dato:** ' + dateNo() + '  ', '**Varighet så langt:** ' + fmt(seconds), '');
+    if (myNotes) { L.push('---', '', '## ✍️ Mine notater', '', myNotes, ''); }
+    if (actionItems.length) {
+      L.push('---', '', '## ⚡ Oppgaver', '');
+      actionItems.forEach(a => {
+        const src = a.manual ? ' ✎' : '';
+        L.push('- [' + (a.done ? 'x' : ' ') + '] ' + a.text + ' — ' + a.who + ' (' + a.timestamp + ')' + src);
+      });
+      L.push('');
+    }
+    L.push('---', '', '## 📝 Transkripsjon (så langt)', '', fullTranscript.trim() || '_(ingen transkripsjon ennå)_', '');
+    return L.join('\n');
+  }
+
+  async function saveDraft() {
+    if (!dirHandle || draftSaving) return;
+    // Ikke skriv tom kladd
+    if (!fullTranscript.trim() && !(document.getElementById('notesInput')?.value || '').trim() && actionItems.length === 0) return;
+    draftSaving = true;
+    try {
+      const fh = await dirHandle.getFileHandle(draftFilename(), { create: true });
+      const w = await fh.createWritable();
+      await w.write(buildDraftMarkdown());
+      await w.close();
+      const ds = document.getElementById('draftStatus');
+      if (ds) ds.textContent = '💾 Kladd autolagret ' + new Date().toLocaleTimeString('no-NO');
+    } catch(e) {
+      const ds = document.getElementById('draftStatus');
+      if (ds) ds.textContent = '⚠ Kladd-lagring feilet (opptaket fortsetter)';
+      // Aldri kast videre — autolagring er best-effort og skal ikke stoppe opptak
+    } finally { draftSaving = false; }
+  }
+
+  function startDraftAutosave() {
+    if (!dirHandle) return; // ingen mappe valgt — kan ikke autolagre
+    clearInterval(draftInterval);
+    saveDraft(); // lagre en gang med en gang
+    draftInterval = setInterval(() => { if (isRecording && !isPaused) saveDraft(); }, 30000);
+  }
+
+  function stopDraftAutosave() {
+    clearInterval(draftInterval);
+    draftInterval = null;
+  }
+
+  // Rydder bort kladdefilen etter at ferdig referat er lagret.
+  async function removeDraft() {
+    if (!dirHandle) return;
+    try { await dirHandle.removeEntry(draftFilename()); } catch(e) { /* fantes ikke — ok */ }
+  }
+
+  // ── Utilities ──────────────────────────────────────
+  function clearAll() {
+    fullTranscript = ''; summaryData = null; confirmedLinks = []; chunkCount = 0; actionItems = [];
+    const ni = document.getElementById('notesInput'); if (ni) ni.value = '';
+    ['transcriptBody','summaryBody'].forEach(id => { document.getElementById(id).innerHTML = '<div class="placeholder-text">Klar.</div>'; });
+    document.getElementById('copyBtn').disabled = true;
+    document.getElementById('summarizeBtn').disabled = true;
+    document.getElementById('saveBtn').disabled = true;
+    document.getElementById('summaryBadge').textContent = 'Venter';
+    document.getElementById('summaryBadge').className = 'panel-badge';
+    document.getElementById('transcriptBadge').textContent = 'Klar';
+    document.getElementById('transcriptBadge').className = 'panel-badge';
+    document.getElementById('timer').textContent = '00:00';
+    document.getElementById('timer').classList.remove('active');
+    const ds = document.getElementById('draftStatus'); if (ds) ds.textContent = '';
+    renderBacklinks();
+    renderActionItems();
+    setStatus('', '');
+  }
+
+  function copyTranscript() {
+    navigator.clipboard.writeText(fullTranscript.trim()).then(() => setStatus('Kopiert.', 'success'));
+  }
+
+  function setStatus(msg, type) {
+    const b = document.getElementById('statusBar');
+    b.innerHTML = msg; b.className = 'status-bar' + (type ? ' ' + type : '');
+  }
+
+  function esc(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+</script>
+</body>
+</html>
