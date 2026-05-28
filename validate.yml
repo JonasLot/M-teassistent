@@ -1,0 +1,23 @@
+name: Valider
+
+# Kjører validering ved hver push og pull request mot main.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Hent koden
+        uses: actions/checkout@v4
+
+      - name: Sett opp Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Valider HTML/JS
+        run: node scripts/validate.js
