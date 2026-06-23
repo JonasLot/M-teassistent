@@ -75,6 +75,21 @@
   .transcript-chunk { margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid var(--border); animation: fadeIn 0.3s ease; }
   .transcript-chunk:last-child { border-bottom: none; }
   .chunk-label { font-size: 10px; color: var(--text-muted); letter-spacing: 0.06em; margin-bottom: 3px; }
+  /* Segment header row: label + token count + delete button */
+  .chunk-head { display: flex; align-items: center; gap: 8px; margin-bottom: 3px; }
+  .chunk-head .chunk-label { flex: 1; margin-bottom: 0; }
+  .chunk-tok { font-size: 9px; color: var(--text-muted); letter-spacing: 0.04em; white-space: nowrap; }
+  .chunk-del { background: transparent; border: 1px solid var(--border); color: var(--text-muted); border-radius: 4px; width: 18px; height: 18px; line-height: 1; font-size: 13px; cursor: pointer; flex-shrink: 0; padding: 0; transition: all 0.15s; }
+  .chunk-del:hover { border-color: var(--danger); color: var(--danger); background: rgba(224,90,90,0.08); }
+  /* Segments beyond the token limit get dimmed + struck through */
+  .transcript-chunk.over-limit { opacity: 0.5; }
+  .transcript-chunk.over-limit:not(.limit-cross) > div:last-child { text-decoration: line-through; text-decoration-color: rgba(224,90,90,0.45); }
+  /* The exact segment where the cumulative count crosses the limit */
+  .transcript-chunk.limit-cross { opacity: 1; border-top: 1px dashed var(--danger); margin-top: 6px; padding-top: 8px; }
+  .limit-warning { font-size: 10px; color: var(--danger); background: rgba(224,90,90,0.08); border: 1px solid rgba(224,90,90,0.25); border-radius: 6px; padding: 5px 8px; margin: 4px 0 6px; letter-spacing: 0.03em; line-height: 1.5; }
+  /* Token badge states */
+  .panel-badge.warn { background: rgba(224,160,90,0.15); color: #e0a05a; }
+  .panel-badge.over { background: rgba(224,90,90,0.15); color: #e05a5a; }
 
   .panels { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
   @media (max-width:640px) { .panels { grid-template-columns: 1fr; } }
@@ -258,7 +273,10 @@
     <div class="panel">
       <div class="panel-header">
         <div class="panel-title">Transkripsjon</div>
-        <div class="panel-badge" id="transcriptBadge">Klar</div>
+        <div style="display:flex;gap:6px;align-items:center;">
+          <div class="panel-badge" id="tokenBadge">~0 / 12 000 tokens</div>
+          <div class="panel-badge" id="transcriptBadge">Klar</div>
+        </div>
       </div>
       <div class="panel-body" id="transcriptBody">
         <div class="placeholder-text">Groq Whisper large-v3 transkriberer norsk tale hvert 60. sekund. Klikk stopp når som helst for å transkribere umiddelbart.</div>
@@ -332,6 +350,16 @@
   let vaultFiles = [], confirmedLinks = [];
   let chunkCount = 0;
   let actionItems = []; // { text, who, timestamp, done }
+  let segments = []; // { text, label, hasCmd } — hvert transkriberte segment, kan slettes enkeltvis
+
+  // ── Token-grense ───────────────────────────────────
+  // Oppsummeringen (Llama 3.3 70b på Groq) har en grense på antall tokens.
+  // Vi estimerer grovt ~4 tegn per token og varsler når transkripsjonen
+  // nærmer seg / overstiger grensen, slik at brukeren kan slette segmenter.
+  const TOKEN_LIMIT = 12000;
+  function estimateTokens(str) { return Math.ceil((str || '').length / 4); }
+  function rebuildTranscript() { fullTranscript = segments.map(s => s.text).join(' ').trim(); }
+  function totalTokens() { return estimateTokens(segments.map(s => s.text).join(' ')); }
 
   // ── Voice command patterns (norsk) ─────────────────
   // Triggers: "oppgave til X: Y", "oppgave for X: Y", "action til X: Y",
@@ -624,7 +652,8 @@
       document.getElementById('waveform').classList.add('active');
       document.getElementById('transcriptBadge').textContent = '● Tar opp';
       document.getElementById('transcriptBadge').className = 'panel-badge live';
-      document.getElementById('transcriptBody').innerHTML = '';
+      segments = []; fullTranscript = '';
+      renderTranscript();
       document.getElementById('recStrip').classList.add('visible');
 
       seconds = 0;
@@ -848,9 +877,8 @@
 
         const text = (await res.text()).trim();
         if (text) {
-          fullTranscript += (fullTranscript ? ' ' : '') + text;
           const hasCmd = processCommandsInChunk(text, fmt(seconds));
-          appendChunk(text, label, hasCmd);
+          appendChunk(text, label, hasCmd); // pusher segment + oppdaterer fullTranscript
           document.getElementById('copyBtn').disabled = false;
           document.getElementById('summarizeBtn').disabled = false;
         }
@@ -878,13 +906,74 @@
     setStatus('Opptak ferdig. Klar for oppsummering.', 'success');
   }
 
+  // Registrerer et nytt segment og tegner transkripsjonen på nytt.
   function appendChunk(text, label, hasCmd = false) {
+    segments.push({ text, label, hasCmd });
+    rebuildTranscript();
+    renderTranscript();
+  }
+
+  // Oppdaterer token-telleren i panelhodet og fargelegger etter status.
+  function updateTokenBadge() {
+    const badge = document.getElementById('tokenBadge');
+    if (!badge) return;
+    const t = totalTokens();
+    badge.textContent = '~' + t.toLocaleString('no-NO') + ' / ' + TOKEN_LIMIT.toLocaleString('no-NO') + ' tokens';
+    badge.className = 'panel-badge ' + (t > TOKEN_LIMIT ? 'over' : (t > TOKEN_LIMIT * 0.9 ? 'warn' : 'ok'));
+  }
+
+  // Tegner alle segmenter med slett-knapp, token-estimat og en varsling
+  // på segmentet der den kumulative token-summen passerer grensen.
+  function renderTranscript() {
     const body = document.getElementById('transcriptBody');
-    const div = document.createElement('div');
-    div.className = 'transcript-chunk' + (hasCmd ? ' cmd' : '');
-    div.innerHTML = '<div class="chunk-label">' + label + (hasCmd ? ' 🎯' : '') + '</div><div>' + esc(text) + '</div>';
-    body.appendChild(div);
+    if (segments.length === 0) {
+      body.innerHTML = '<div class="placeholder-text">Groq Whisper large-v3 transkriberer norsk tale hvert 60. sekund. Klikk stopp når som helst for å transkribere umiddelbart.</div>';
+      updateTokenBadge();
+      return;
+    }
+    body.innerHTML = '';
+    let cum = 0, limitMarked = false;
+    segments.forEach((seg, i) => {
+      const segTokens = estimateTokens(seg.text);
+      cum += segTokens;
+      const isOver = cum > TOKEN_LIMIT;
+      const isCross = isOver && !limitMarked;
+      if (isCross) limitMarked = true;
+      const div = document.createElement('div');
+      div.className = 'transcript-chunk'
+        + (seg.hasCmd ? ' cmd' : '')
+        + (isOver ? ' over-limit' : '')
+        + (isCross ? ' limit-cross' : '');
+      const warnBanner = isCross
+        ? '<div class="limit-warning">⚠ Token-grensen (' + TOKEN_LIMIT.toLocaleString('no-NO') + ') passeres her (~' + cum.toLocaleString('no-NO') + '). Slett dette eller tidligere segmenter for å komme innenfor før oppsummering.</div>'
+        : '';
+      div.innerHTML =
+        '<div class="chunk-head">' +
+          '<span class="chunk-label">' + esc(seg.label) + (seg.hasCmd ? ' 🎯' : '') + '</span>' +
+          '<span class="chunk-tok">~' + segTokens.toLocaleString('no-NO') + ' tok</span>' +
+          '<button class="chunk-del" title="Slett segment" onclick="deleteSegment(' + i + ')">×</button>' +
+        '</div>' +
+        warnBanner +
+        '<div>' + esc(seg.text) + '</div>';
+      body.appendChild(div);
+    });
     body.scrollTop = body.scrollHeight;
+    updateTokenBadge();
+  }
+
+  // Sletter ett segment og oppdaterer transkripsjon + knappetilstand.
+  function deleteSegment(i) {
+    if (i < 0 || i >= segments.length) return;
+    segments.splice(i, 1);
+    rebuildTranscript();
+    renderTranscript();
+    const has = segments.length > 0;
+    document.getElementById('copyBtn').disabled = !has;
+    document.getElementById('summarizeBtn').disabled = !has && actionItems.length === 0;
+    const t = totalTokens();
+    setStatus(has
+      ? 'Segment slettet — ~' + t.toLocaleString('no-NO') + ' tokens igjen' + (t > TOKEN_LIMIT ? ' (fortsatt over grensen)' : ' (innenfor grensen)')
+      : 'Alle segmenter slettet.', t > TOKEN_LIMIT ? 'error' : (has ? 'success' : ''));
   }
 
   // ── Summarize via Claude ───────────────────────────
@@ -893,6 +982,11 @@
     if (!fullTranscript.trim() && !hasNotes) return;
     if (!groqKey.startsWith('gsk_')) {
       setStatus('Legg inn Groq API-nøkkel for oppsummering.', 'error'); return;
+    }
+    const tok = totalTokens();
+    if (tok > TOKEN_LIMIT) {
+      setStatus('Transkripsjonen er ~' + tok.toLocaleString('no-NO') + ' tokens — over grensen på ' + TOKEN_LIMIT.toLocaleString('no-NO') + '. Slett segmenter (markert med ⚠) før oppsummering.', 'error');
+      return;
     }
     const btn = document.getElementById('summarizeBtn');
     const badge = document.getElementById('summaryBadge');
@@ -1127,9 +1221,10 @@
 
   // ── Utilities ──────────────────────────────────────
   function clearAll() {
-    fullTranscript = ''; summaryData = null; confirmedLinks = []; chunkCount = 0; actionItems = [];
+    fullTranscript = ''; summaryData = null; confirmedLinks = []; chunkCount = 0; actionItems = []; segments = [];
     const ni = document.getElementById('notesInput'); if (ni) ni.value = '';
-    ['transcriptBody','summaryBody'].forEach(id => { document.getElementById(id).innerHTML = '<div class="placeholder-text">Klar.</div>'; });
+    document.getElementById('summaryBody').innerHTML = '<div class="placeholder-text">Klar.</div>';
+    renderTranscript();
     document.getElementById('copyBtn').disabled = true;
     document.getElementById('summarizeBtn').disabled = true;
     document.getElementById('saveBtn').disabled = true;
