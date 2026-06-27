@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls:*)",
+      "Bash(node:*)",
+      "Bash(which:*)",
+      "Bash(echo:*)",
+      "Bash(command:*)",
+      "Bash(JSC=$:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

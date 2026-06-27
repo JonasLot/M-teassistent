@@ -168,6 +168,11 @@
   .rec-strip.visible { display: flex; }
   .rec-strip .rec-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--danger); animation: blink 1s infinite; flex-shrink: 0; }
 
+  .auto-stop-warn { display: none; align-items: center; gap: 12px; padding: 10px 16px; background: rgba(224,160,90,0.08); border: 1px solid rgba(224,160,90,0.35); border-radius: 8px; margin-bottom: 12px; font-size: 11px; color: #e0b070; }
+  .auto-stop-warn.visible { display: flex; }
+  .auto-stop-warn button { background: var(--surface); border: 1px solid rgba(224,160,90,0.5); color: #e0b070; border-radius: 6px; padding: 6px 14px; font-family: 'DM Mono', monospace; font-size: 11px; cursor: pointer; transition: all 0.15s; letter-spacing: 0.03em; margin-left: auto; }
+  .auto-stop-warn button:hover { background: rgba(224,160,90,0.12); }
+
   .toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
   .toolbar-left { display: flex; gap: 10px; flex-wrap: wrap; }
   .btn-secondary { background: var(--surface); border: 1px solid var(--border); color: var(--text-muted); border-radius: 8px; padding: 10px 18px; font-family: 'DM Mono', monospace; font-size: 12px; cursor: pointer; transition: all 0.15s; letter-spacing: 0.03em; }
@@ -255,6 +260,13 @@
     <div class="rec-dot"></div>
     <span id="recStripMsg">Tar opp — transkriberes automatisk hvert 60. sekund</span>
   </div>
+
+  <!-- Auto-stopp ved stillhet: varsel med nedtelling -->
+  <div class="auto-stop-warn" id="autoStopWarn">
+    <span id="autoStopMsg">Stille en stund — stopper om 30 s…</span>
+    <button id="autoStopCancel" onclick="onAutoStopCancel()">Fortsett opptak</button>
+  </div>
+
   <div class="draft-status" id="draftStatus"></div>
 
   <!-- Manuelle notater underveis -->
@@ -351,6 +363,15 @@
   let chunkCount = 0;
   let actionItems = []; // { text, who, timestamp, done }
   let segments = []; // { text, label, hasCmd } — hvert transkriberte segment, kan slettes enkeltvis
+
+  // ── Auto-stopp ved stillhet ────────────────────────
+  // Hvis det har vært stille en god stund antar vi at møtet er over og
+  // stopper opptaket automatisk (med varsel + nedtelling man kan avbryte).
+  const SILENCE_STOP_MS = 5 * 60 * 1000; // 5 min stillhet → auto-stopp
+  const SILENCE_WARN_MS = 30 * 1000;     // vis nedtelling siste 30 sek
+  const SILENCE_RMS_THRESHOLD = 0.012;   // under dette regnes som «stille» (justeres ved test)
+  let silenceAnalyser = null, silenceAnalyserCtx = null, silenceData = null;
+  let silenceCheckInterval = null, silenceStartTs = null, autoStopWarned = false;
 
   // ── Token-grense ───────────────────────────────────
   // Oppsummeringen (Llama 3.3 70b på Groq) har en grense på antall tokens.
@@ -627,6 +648,91 @@
     mediaStream = micStream = sysStream = null;
   }
 
+  // ── Auto-stopp ved stillhet ────────────────────────
+  // Tapper mediaStream med en egen AnalyserNode (ikke koblet til
+  // destination, så ingen ekko), måler RMS-volum hvert sekund og teller
+  // hvor lenge det har vært stille. Egen AudioContext brukes så det virker
+  // for alle kilder (mic/system/both) uavhengig av den eksisterende audioCtx.
+  function startSilenceWatch() {
+    if (!mediaStream) return;
+    stopSilenceWatch(); // idempotent — rydd evt. tidligere watch
+    try {
+      silenceAnalyserCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const src = silenceAnalyserCtx.createMediaStreamSource(mediaStream);
+      silenceAnalyser = silenceAnalyserCtx.createAnalyser();
+      silenceAnalyser.fftSize = 2048;
+      src.connect(silenceAnalyser); // bevisst IKKE koblet til destination
+      silenceData = new Uint8Array(silenceAnalyser.fftSize);
+    } catch(e) {
+      stopSilenceWatch();
+      return; // best-effort — uten analysator hopper vi bare over auto-stopp
+    }
+    silenceStartTs = null;
+    autoStopWarned = false;
+    silenceCheckInterval = setInterval(() => {
+      if (!silenceAnalyser || !isRecording || isPaused) return;
+      silenceAnalyser.getByteTimeDomainData(silenceData);
+      // RMS rundt nullpunktet (128 = stillhet for 8-bit time-domain).
+      let sum = 0;
+      for (let i = 0; i < silenceData.length; i++) {
+        const v = (silenceData[i] - 128) / 128;
+        sum += v * v;
+      }
+      const rms = Math.sqrt(sum / silenceData.length);
+
+      if (rms > SILENCE_RMS_THRESHOLD) {
+        // Lyd registrert — nullstill stillhetsteller og skjul evt. varsel.
+        silenceStartTs = null;
+        if (autoStopWarned) clearAutoStopWarning();
+        return;
+      }
+
+      // Stille: start eller fortsett tellingen.
+      const now = Date.now();
+      if (silenceStartTs === null) silenceStartTs = now;
+      const silentMs = now - silenceStartTs;
+
+      if (silentMs >= SILENCE_STOP_MS) {
+        setStatus('Stille i ' + Math.round(SILENCE_STOP_MS / 60000) + ' min — stopper opptak automatisk og transkriberer.', '');
+        stopRecording();
+        return;
+      }
+      if (silentMs >= SILENCE_STOP_MS - SILENCE_WARN_MS) {
+        const remainingSec = Math.ceil((SILENCE_STOP_MS - silentMs) / 1000);
+        showAutoStopWarning(remainingSec);
+      }
+    }, 1000);
+  }
+
+  function stopSilenceWatch() {
+    if (silenceCheckInterval) { clearInterval(silenceCheckInterval); silenceCheckInterval = null; }
+    if (silenceAnalyserCtx) { try { silenceAnalyserCtx.close(); } catch(e){} silenceAnalyserCtx = null; }
+    silenceAnalyser = null;
+    silenceData = null;
+    silenceStartTs = null;
+  }
+
+  function showAutoStopWarning(remainingSec) {
+    autoStopWarned = true;
+    const warn = document.getElementById('autoStopWarn');
+    const msg = document.getElementById('autoStopMsg');
+    if (msg) msg.textContent = 'Stille en stund — stopper om ' + remainingSec + ' s…';
+    if (warn) warn.classList.add('visible');
+  }
+
+  function clearAutoStopWarning() {
+    autoStopWarned = false;
+    const warn = document.getElementById('autoStopWarn');
+    if (warn) warn.classList.remove('visible');
+  }
+
+  // «Fortsett opptak»: gi en helt ny stillhetsperiode og skjul varselet.
+  function onAutoStopCancel() {
+    silenceStartTs = null;
+    clearAutoStopWarning();
+    setStatus('Auto-stopp avbrutt — fortsetter opptak.', '');
+  }
+
   async function startRecording() {
     try {
       mediaStream = await acquireStream();
@@ -636,6 +742,7 @@
       isRecording = true; isPaused = false; chunkCount = 0;
 
       startSegmentRecorder(); // starter første segment-opptaker
+      startSilenceWatch();    // auto-stopp ved langvarig stillhet
       requestWakeLock();      // hold skjermen våken under lange møter
       startDraftAutosave();   // autolagre kladd hvert 30. sek
       if (!dirHandle) {
@@ -709,6 +816,8 @@
     isRecording = false; isPaused = false;
     clearInterval(timerInterval);
     clearInterval(segmentInterval);
+    stopSilenceWatch();
+    clearAutoStopWarning();
     document.getElementById('recordBtn').classList.remove('recording');
     document.getElementById('recordLabel').textContent = 'Ta opp';
     const pb = document.getElementById('pauseBtn');
@@ -739,6 +848,8 @@
     isPaused = true;
     clearInterval(timerInterval);
     clearInterval(segmentInterval);
+    stopSilenceWatch();      // ikke tell stillhet under pause
+    clearAutoStopWarning();
     // Stopp gjeldende segment — onstop→flushSegment transkriberer det opptatte,
     // men starter IKKE nytt segment siden isPaused er true.
     if (mediaRecorder && mediaRecorder.state === 'recording') mediaRecorder.stop();
@@ -758,6 +869,7 @@
   function resumeRecording() {
     isPaused = false;
     startSegmentRecorder(); // starter ferskt segment
+    startSilenceWatch();    // gjenoppta stillhetsovervåking
     requestWakeLock();
     document.getElementById('pauseBtn').classList.remove('paused');
     document.getElementById('pauseLabel').textContent = 'Pause';
